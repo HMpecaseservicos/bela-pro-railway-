@@ -38,8 +38,8 @@ export type MessageCallback = (message: IncomingWhatsAppMessage) => Promise<void
  * 
  * Ordem de prioridade:
  * 1. PUPPETEER_EXECUTABLE_PATH (env var explícita)
- * 2. /usr/bin/chromium (Fly.io / Docker Debian)
- * 3. /nix/var/nix/profiles/default/bin/chromium (Railway Nixpacks)
+ * 2. /nix/var/nix/profiles/default/bin/chromium (Railway Nixpacks)
+ * 3. /usr/bin/chromium (Docker Debian)
  * 4. Outros caminhos conhecidos
  */
 function findChromiumExecutable(): string | undefined {
@@ -50,13 +50,13 @@ function findChromiumExecutable(): string | undefined {
   }
 
   // Caminhos conhecidos para Chromium/Chrome
-  // ORDEM IMPORTA: Fly.io primeiro, depois Railway, depois outros
+  // ORDEM IMPORTA: Railway primeiro, depois outros
   const knownPaths = [
-    // Fly.io / Docker Debian (PRIORIDADE)
+    // Nix (Railway) - PRIORIDADE
+    '/nix/var/nix/profiles/default/bin/chromium',
+    // Docker Debian
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
-    // Nix (Railway)
-    '/nix/var/nix/profiles/default/bin/chromium',
     // Nix alternativo
     (process.env.HOME || '') + '/.nix-profile/bin/chromium',
     // Outros
@@ -147,13 +147,12 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
   private messageCallback: MessageCallback | null = null;
   
   // Pasta base para armazenar sessões WhatsApp
-  // WHATSAPP_SESSIONS_DIR: volume persistente no Fly.io (/data/whatsapp)
+  // WHATSAPP_SESSIONS_DIR: diretório configurável via env
   // Fallback: pasta local para Railway/dev (.whatsapp-sessions)
   private readonly sessionsDir: string;
 
   constructor() {
     // Determinar diretório de sessões
-    // Fly.io: usa /data/whatsapp (volume persistente)
     // Railway/Dev: usa .whatsapp-sessions (relativo ao cwd)
     const envSessionsDir = process.env.WHATSAPP_SESSIONS_DIR;
     

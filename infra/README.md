@@ -3,7 +3,7 @@
 Pasta para infraestrutura local e produção.
 
 - `docker-compose.yml` na raiz: Postgres + Redis (dev)
-- Evolução: Kubernetes / Fly.io / Render / AWS
+- Deploy: Railway (produção)
 
 Recomendação de produção:
 - Postgres gerenciado
