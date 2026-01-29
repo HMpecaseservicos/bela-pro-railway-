@@ -345,6 +345,15 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
    * Configura os event handlers do cliente
    */
   private setupClientEvents(workspaceId: string, client: Client, sessionData: SessionData): void {
+    this.logger.log(`[${workspaceId}] 🔧 Configurando event handlers...`);
+    
+    // LOG: Todos os eventos para diagnóstico
+    const allEvents = ['qr', 'authenticated', 'auth_failure', 'ready', 'message', 'message_create', 
+      'disconnected', 'loading_screen', 'change_state', 'change_battery'];
+    allEvents.forEach(evt => {
+      this.logger.debug(`[${workspaceId}] Registrando listener para: ${evt}`);
+    });
+    
     // QR Code gerado
     client.on('qr', (qr: string) => {
       this.logger.log(`[${workspaceId}] QR Code gerado`);
@@ -355,6 +364,11 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
     // Log de loading_screen (pode ajudar a entender o que está acontecendo)
     client.on('loading_screen', (percent: number, message: string) => {
       this.logger.log(`[${workspaceId}] 📊 Loading: ${percent}% - ${message}`);
+    });
+    
+    // Mudança de estado interno do WhatsApp
+    client.on('change_state', (state: string) => {
+      this.logger.log(`[${workspaceId}] 🔄 Estado mudou para: ${state}`);
     });
 
     // Autenticação bem sucedida
