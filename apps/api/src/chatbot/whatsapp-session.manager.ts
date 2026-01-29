@@ -641,6 +641,10 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
     
     let lastMessageTimestamp = Date.now();
     
+    // Obter número do bot para filtrar mensagens próprias
+    const botPhone = sessionData.connectedPhone?.replace('+', '') || '';
+    this.logger.log(`[${workspaceId}] 📱 Número do bot para filtro: ${botPhone}`);
+    
     const pollInterval = setInterval(async () => {
       // Parar se desconectado
       if (sessionData.state !== WhatsAppSessionState.CONNECTED) {
@@ -704,6 +708,13 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
           
           // Ignorar mensagens muito antigas (mais de 60 segundos)
           if (Date.now() - msg.timestamp > 60000) {
+            continue;
+          }
+          
+          // Ignorar mensagens do próprio bot (evitar loop)
+          const senderPhone = msg.from.replace('@c.us', '');
+          if (botPhone && senderPhone === botPhone) {
+            this.logger.debug(`[${workspaceId}] Ignorando mensagem própria do bot: ${senderPhone}`);
             continue;
           }
           
