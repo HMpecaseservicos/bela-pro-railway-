@@ -116,8 +116,16 @@ function getPuppeteerConfig() {
       '--no-first-run',
       '--no-zygote',
       '--disable-gpu',
-      '--single-process', // Importante para Railway
+      // '--single-process', // REMOVIDO: causa problemas com whatsapp-web.js
       '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-default-apps',
+      '--disable-sync',
+      '--disable-translate',
+      '--metrics-recording-only',
+      '--mute-audio',
+      '--no-default-browser-check',
+      '--safebrowsing-disable-auto-update',
     ],
   };
 }
@@ -318,11 +326,17 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
     this.setupClientEvents(workspaceId, client, sessionData);
 
     // Inicializar cliente (não bloqueia)
-    client.initialize().catch(err => {
-      this.logger.error(`[${workspaceId}] Erro ao inicializar: ${err.message}`);
-      sessionData.state = WhatsAppSessionState.AUTH_FAILURE;
-      sessionData.lastError = err.message;
-    });
+    this.logger.log(`[${workspaceId}] 🚀 Iniciando client.initialize()...`);
+    client.initialize()
+      .then(() => {
+        this.logger.log(`[${workspaceId}] ✅ client.initialize() completou`);
+      })
+      .catch(err => {
+        this.logger.error(`[${workspaceId}] ❌ Erro ao inicializar: ${err.message}`);
+        this.logger.error(`[${workspaceId}] Stack: ${err.stack}`);
+        sessionData.state = WhatsAppSessionState.AUTH_FAILURE;
+        sessionData.lastError = err.message;
+      });
 
     return this.getSessionInfo(workspaceId);
   }
@@ -338,9 +352,14 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
       sessionData.qrCode = qr;
     });
 
+    // Log de loading_screen (pode ajudar a entender o que está acontecendo)
+    client.on('loading_screen', (percent: number, message: string) => {
+      this.logger.log(`[${workspaceId}] 📊 Loading: ${percent}% - ${message}`);
+    });
+
     // Autenticação bem sucedida
     client.on('authenticated', () => {
-      this.logger.log(`[${workspaceId}] Autenticado com sucesso - aguardando ready...`);
+      this.logger.log(`[${workspaceId}] ✅ Autenticado com sucesso - aguardando ready...`);
       sessionData.state = WhatsAppSessionState.AUTHENTICATING;
       sessionData.qrCode = null;
       
