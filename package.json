@@ -24,8 +24,9 @@
     "build:api": "npm run build -w @bela-pro/api",
     "build:web": "npm run build -w @bela-pro/web",
     "start:api": "node apps/api/dist/main.js",
-    "railway:build": "npm run db:generate && npm run build -w @bela-pro/api",
-    "railway:start": "node apps/api/dist/main.js"
+    "start:web": "npm run start -w @bela-pro/web",
+    "railway:build": "if [ \"$SERVICE_TYPE\" = \"web\" ]; then npm run build:web; else npm run db:generate && npm run build:api; fi",
+    "railway:start": "if [ \"$SERVICE_TYPE\" = \"web\" ]; then npm run start:web; else npm run db:migrate:deploy && npm run start:api; fi"
   },
   "engines": {
     "node": ">=20"

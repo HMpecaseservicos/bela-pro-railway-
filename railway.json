@@ -2,10 +2,10 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm run db:generate && npm run build -w @bela-pro/api"
+    "buildCommand": "npm run railway:build"
   },
   "deploy": {
-    "startCommand": "npm run db:migrate:deploy && node apps/api/dist/main.js",
+    "startCommand": "npm run railway:start",
     "healthcheckPath": "/api/v1/health",
     "healthcheckTimeout": 60,
     "restartPolicyType": "ON_FAILURE",
