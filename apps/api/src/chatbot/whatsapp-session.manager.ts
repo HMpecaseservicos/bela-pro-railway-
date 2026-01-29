@@ -213,6 +213,7 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
    */
   setMessageCallback(callback: MessageCallback): void {
     this.messageCallback = callback;
+    this.logger.log(`[CALLBACK] ✅ messageCallback registrado pelo BotService`);
   }
 
   /**
@@ -430,6 +431,15 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
 
     // Mensagem recebida
     client.on('message', async (msg: Message) => {
+      // LOG: Mensagem bruta recebida
+      this.logger.log(
+        `[${workspaceId}] 📩 Mensagem recebida | ` +
+        `from: ${msg.from} | ` +
+        `body: "${(msg.body || '').substring(0, 50)}" | ` +
+        `fromMe: ${msg.fromMe} | ` +
+        `callback registrado: ${!!this.messageCallback}`
+      );
+      
       // Ignorar mensagens de grupo, próprias, de broadcast ou LID
       if (
         msg.from.includes('@g.us') ||       // Grupos
@@ -437,12 +447,14 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
         msg.from.includes('@lid') ||        // LID (identificador interno)
         msg.fromMe                          // Mensagens próprias
       ) {
+        this.logger.debug(`[${workspaceId}] Mensagem ignorada: grupo/broadcast/própria`);
         return;
       }
 
       // Ignorar mensagens vazias ou muito antigas (sync inicial)
       const messageAge = Date.now() - (msg.timestamp * 1000);
       if (!msg.body || msg.body.trim() === '' || messageAge > 60000) {
+        this.logger.debug(`[${workspaceId}] Mensagem ignorada: vazia ou antiga (${messageAge}ms)`);
         return; // Ignora mensagens vazias ou com mais de 1 minuto
       }
 
@@ -468,11 +480,15 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
 
       // Chamar callback se registrado
       if (this.messageCallback) {
+        this.logger.log(`[${workspaceId}] 📤 Chamando callback do bot para: ${msg.from}`);
         try {
           await this.messageCallback(incoming);
+          this.logger.log(`[${workspaceId}] ✅ Callback processou mensagem com sucesso`);
         } catch (err) {
-          this.logger.error(`[${workspaceId}] Erro no callback de mensagem: ${err}`);
+          this.logger.error(`[${workspaceId}] ❌ Erro no callback de mensagem: ${err}`);
         }
+      } else {
+        this.logger.warn(`[${workspaceId}] ⚠️ messageCallback NÃO registrado - mensagem não será processada!`);
       }
     });
   }
