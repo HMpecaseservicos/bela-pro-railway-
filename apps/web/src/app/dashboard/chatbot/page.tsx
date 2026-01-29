@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 
-type SessionState = 'disconnected' | 'connecting' | 'qr_pending' | 'connected' | 'auth_failure';
+type SessionState = 'disconnected' | 'connecting' | 'qr_pending' | 'authenticating' | 'connected' | 'auth_failure';
 
 interface WhatsAppStatus {
   state: SessionState;
@@ -228,12 +228,14 @@ export default function ChatbotPage() {
   // Estado visual
   const isConnected = status?.state === 'connected';
   const isWaitingQr = status?.state === 'qr_pending';
+  const isAuthenticating = status?.state === 'authenticating';
   const isConnecting = status?.state === 'connecting' || connecting;
 
   const stateLabel: Record<SessionState, string> = {
     disconnected: '🔴 Desconectado',
     connecting: '🟡 Conectando...',
     qr_pending: '📱 Aguardando QR Code',
+    authenticating: '🟡 Autenticando...',
     connected: '🟢 Conectado',
     auth_failure: '🔴 Falha na autenticação',
   };
@@ -242,6 +244,7 @@ export default function ChatbotPage() {
     disconnected: '#ef4444',
     connecting: '#f59e0b',
     qr_pending: '#3b82f6',
+    authenticating: '#f59e0b',
     connected: '#10b981',
     auth_failure: '#ef4444',
   };
@@ -343,7 +346,7 @@ export default function ChatbotPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
-            {!isConnected && !isWaitingQr && (
+            {!isConnected && !isWaitingQr && !isAuthenticating && (
               <button
                 onClick={handleConnect}
                 disabled={isConnecting}
@@ -362,7 +365,7 @@ export default function ChatbotPage() {
               </button>
             )}
 
-            {(isConnected || isWaitingQr) && (
+            {(isConnected || isWaitingQr || isAuthenticating) && (
               <button
                 onClick={handleDisconnect}
                 disabled={disconnecting}
@@ -442,6 +445,24 @@ export default function ChatbotPage() {
           <h3 style={{ margin: 0, color: '#0f172a', fontSize: 18 }}>Iniciando conexão...</h3>
           <p style={{ margin: '8px 0 0', color: '#64748b' }}>
             Aguarde, o QR Code aparecerá em instantes.
+          </p>
+        </div>
+      )}
+
+      {/* Autenticando */}
+      {isAuthenticating && (
+        <div style={{
+          background: 'white',
+          borderRadius: 16,
+          padding: 48,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          textAlign: 'center',
+          marginBottom: 24,
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔐</div>
+          <h3 style={{ margin: 0, color: '#0f172a', fontSize: 18 }}>Autenticando...</h3>
+          <p style={{ margin: '8px 0 0', color: '#64748b' }}>
+            QR Code escaneado! Aguarde enquanto conectamos ao WhatsApp.
           </p>
         </div>
       )}

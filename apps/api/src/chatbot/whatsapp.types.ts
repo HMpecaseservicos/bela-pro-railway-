@@ -14,6 +14,7 @@ export enum WhatsAppSessionState {
   DISCONNECTED = 'disconnected',
   CONNECTING = 'connecting',
   QR_PENDING = 'qr_pending',
+  AUTHENTICATING = 'authenticating',
   CONNECTED = 'connected',
   AUTH_FAILURE = 'auth_failure',
 }

@@ -315,12 +315,35 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
 
     // Autenticação bem sucedida
     client.on('authenticated', () => {
-      this.logger.log(`[${workspaceId}] Autenticado com sucesso`);
+      this.logger.log(`[${workspaceId}] Autenticado com sucesso - aguardando ready...`);
+      sessionData.state = WhatsAppSessionState.AUTHENTICATING;
       sessionData.qrCode = null;
+      
+      // Timeout: se ready não vier em 60s, força o estado como conectado
+      setTimeout(() => {
+        if (sessionData.state === WhatsAppSessionState.AUTHENTICATING) {
+          this.logger.warn(`[${workspaceId}] ⚠️ Timeout aguardando ready - forçando estado CONNECTED`);
+          sessionData.state = WhatsAppSessionState.CONNECTED;
+          sessionData.connectedAt = new Date();
+          
+          // Tenta obter info do cliente
+          try {
+            const info = client.info;
+            if (info?.wid?.user) {
+              sessionData.connectedPhone = `+${info.wid.user}`;
+              this.connectedPhones.set(info.wid.user, workspaceId);
+              this.logger.log(`[${workspaceId}] ✅ Conectado (via timeout) | telefone: +${info.wid.user}`);
+            }
+          } catch (err) {
+            this.logger.log(`[${workspaceId}] ✅ Conectado (via timeout) - sem info de telefone`);
+          }
+        }
+      }, 60000);
     });
 
     // Pronto para usar
     client.on('ready', async () => {
+      this.logger.log(`[${workspaceId}] 🎉 Evento READY recebido!`);
       sessionData.state = WhatsAppSessionState.CONNECTED;
       sessionData.qrCode = null;
       sessionData.connectedAt = new Date();
