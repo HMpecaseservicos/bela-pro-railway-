@@ -461,6 +461,10 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
             } catch {
               this.logger.log(`[${workspaceId}] ✅ WhatsApp conectado (fallback)`);
             }
+            
+            // Iniciar polling de mensagens como fallback
+            // (eventos message/message_create podem não funcionar sem ready nativo)
+            this.startMessagePolling(workspaceId, client, sessionData);
           }
         } catch (e) {
           // Ignore
@@ -629,6 +633,121 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
   }
 
   /**
+   * Polling de mensagens como fallback quando eventos não disparam
+   * Usado quando o ready é detectado manualmente (seletores da lib desatualizados)
+   */
+  private startMessagePolling(workspaceId: string, client: Client, sessionData: SessionData): void {
+    this.logger.log(`[${workspaceId}] 🔄 Iniciando polling de mensagens (fallback)...`);
+    
+    let lastMessageTimestamp = Date.now();
+    
+    const pollInterval = setInterval(async () => {
+      // Parar se desconectado
+      if (sessionData.state !== WhatsAppSessionState.CONNECTED) {
+        this.logger.log(`[${workspaceId}] ⏹️ Polling parado - sessão desconectada`);
+        clearInterval(pollInterval);
+        return;
+      }
+      
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const page = (client as any).pupPage;
+        if (!page) return;
+        
+        // Buscar mensagens não lidas via API interna do WhatsApp Web
+        const unreadMessages = await page.evaluate(() => {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const win = window as any;
+            if (!win.Store || !win.Store.Chat) return [];
+            
+            const chats = win.Store.Chat.getModelsArray();
+            const messages: Array<{
+              id: string;
+              from: string;
+              body: string;
+              timestamp: number;
+              fromMe: boolean;
+              pushname: string;
+            }> = [];
+            
+            for (const chat of chats) {
+              if (chat.unreadCount > 0 && !chat.id._serialized.includes('@g.us')) {
+                const chatMsgs = chat.msgs?.getModelsArray?.() || [];
+                for (const msg of chatMsgs.slice(-5)) { // Últimas 5 mensagens
+                  if (!msg.isFromMe && msg.body && msg.t) {
+                    messages.push({
+                      id: msg.id._serialized,
+                      from: msg.from?._serialized || chat.id._serialized,
+                      body: msg.body,
+                      timestamp: msg.t * 1000,
+                      fromMe: msg.isFromMe,
+                      pushname: msg.notifyName || '',
+                    });
+                  }
+                }
+              }
+            }
+            
+            return messages;
+          } catch {
+            return [];
+          }
+        }).catch(() => []);
+        
+        // Processar mensagens novas
+        for (const msg of unreadMessages) {
+          // Ignorar mensagens antigas ou já processadas
+          if (msg.timestamp < lastMessageTimestamp || this.processedMessages.has(msg.id)) {
+            continue;
+          }
+          
+          // Ignorar mensagens muito antigas (mais de 60 segundos)
+          if (Date.now() - msg.timestamp > 60000) {
+            continue;
+          }
+          
+          this.processedMessages.add(msg.id);
+          lastMessageTimestamp = Math.max(lastMessageTimestamp, msg.timestamp);
+          
+          this.logger.log(
+            `[${workspaceId}] 📩 POLLING | from: ${msg.from} | body: "${msg.body.substring(0, 50)}" | callback: ${!!this.messageCallback}`
+          );
+          
+          // Converter para formato interno
+          const incoming: IncomingWhatsAppMessage = {
+            workspaceId,
+            from: msg.from.replace('@c.us', ''),
+            fromName: msg.pushname,
+            body: msg.body,
+            timestamp: new Date(msg.timestamp),
+            messageId: msg.id,
+            rawMessage: null, // Polling não tem objeto Message nativo
+          };
+          
+          // Chamar callback
+          if (this.messageCallback) {
+            this.logger.log(`[${workspaceId}] 📤 Chamando callback (polling) para: ${msg.from}`);
+            try {
+              await this.messageCallback(incoming);
+              this.logger.log(`[${workspaceId}] ✅ Callback processou mensagem (polling) com sucesso`);
+            } catch (err) {
+              this.logger.error(`[${workspaceId}] ❌ Erro no callback (polling): ${err}`);
+            }
+          }
+        }
+      } catch (e) {
+        // Ignorar erros de polling
+        this.logger.debug(`[${workspaceId}] Erro no polling: ${e}`);
+      }
+    }, 2000); // Poll a cada 2 segundos
+    
+    // Guardar referência para cleanup
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (sessionData as any).pollInterval = pollInterval;
+  }
+
+  /**
    * Responde diretamente a uma mensagem
    * Usa window.WWebJS.sendMessage diretamente via pupPage.evaluate
    * para contornar o bug do markedUnread no whatsapp-web.js
@@ -786,6 +905,14 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
       `telefone: ${session.connectedPhone || 'N/A'} | ` +
       `sessões antes: ${this.sessions.size}`
     );
+    
+    // Parar polling se existir
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pollInterval = (session as any).pollInterval;
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      this.logger.debug(`[${workspaceId}] Polling parado`);
+    }
     
     // Remover número do registro
     if (session.connectedPhone) {
