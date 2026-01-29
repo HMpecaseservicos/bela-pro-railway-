@@ -153,12 +153,32 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
 
   constructor() {
     // Determinar diretório de sessões
-    // Railway/Dev: usa .whatsapp-sessions (relativo ao cwd)
+    // Railway: usa .whatsapp-sessions na pasta do app (não há volume persistente)
+    // Fly.io/Docker: pode usar WHATSAPP_SESSIONS_DIR=/data/whatsapp (com volume)
     const envSessionsDir = process.env.WHATSAPP_SESSIONS_DIR;
     
-    if (envSessionsDir && fs.existsSync(path.dirname(envSessionsDir))) {
+    // Só usa envSessionsDir se o diretório pai existir E for gravável
+    let useEnvDir = false;
+    if (envSessionsDir) {
+      const parentDir = path.dirname(envSessionsDir);
+      try {
+        if (fs.existsSync(parentDir)) {
+          // Testa se é gravável criando um arquivo temporário
+          const testFile = path.join(parentDir, '.write-test-' + Date.now());
+          fs.writeFileSync(testFile, 'test');
+          fs.unlinkSync(testFile);
+          useEnvDir = true;
+        }
+      } catch {
+        // Diretório não existe ou não é gravável
+        this.logger.warn(`[INIT] WHATSAPP_SESSIONS_DIR=${envSessionsDir} não é utilizável, usando fallback`);
+      }
+    }
+    
+    if (useEnvDir && envSessionsDir) {
       this.sessionsDir = envSessionsDir;
     } else {
+      // Fallback: pasta local relativa ao app
       this.sessionsDir = path.join(process.cwd(), '.whatsapp-sessions');
     }
     
