@@ -328,8 +328,29 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
     // Inicializar cliente (não bloqueia)
     this.logger.log(`[${workspaceId}] 🚀 Iniciando client.initialize()...`);
     client.initialize()
-      .then(() => {
+      .then(async () => {
         this.logger.log(`[${workspaceId}] ✅ client.initialize() completou`);
+        
+        // Capturar erros do Puppeteer para diagnóstico
+        try {
+          const page = (client as any).pupPage;
+          if (page) {
+            page.on('console', (consoleMsg: any) => {
+              const type = consoleMsg.type();
+              const text = consoleMsg.text();
+              // Só logar erros e warnings
+              if (type === 'error' || type === 'warning') {
+                this.logger.warn(`[${workspaceId}] 🌐 Console[${type}]: ${text.substring(0, 200)}`);
+              }
+            });
+            page.on('pageerror', (err: any) => {
+              this.logger.error(`[${workspaceId}] 🌐 PageError: ${err.message?.substring(0, 200) || err}`);
+            });
+            this.logger.log(`[${workspaceId}] 🔍 Listeners de console do Puppeteer configurados`);
+          }
+        } catch (e) {
+          this.logger.debug(`[${workspaceId}] Não foi possível configurar listeners de página`);
+        }
       })
       .catch(err => {
         this.logger.error(`[${workspaceId}] ❌ Erro ao inicializar: ${err.message}`);
@@ -376,6 +397,41 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
       this.logger.log(`[${workspaceId}] ✅ Autenticado com sucesso - aguardando ready...`);
       sessionData.state = WhatsAppSessionState.AUTHENTICATING;
       sessionData.qrCode = null;
+      
+      // Diagnóstico: verificar estado após alguns segundos
+      const checkInterval = setInterval(async () => {
+        if (sessionData.state === WhatsAppSessionState.CONNECTED) {
+          clearInterval(checkInterval);
+          return;
+        }
+        try {
+          const page = (client as any).pupPage;
+          if (page) {
+            // Verificar URL e se há frames de erro
+            const url = page.url();
+            this.logger.log(`[${workspaceId}] 🔍 Diagnóstico: URL=${url.substring(0, 50)}, state=${sessionData.state}`);
+            
+            // Tentar avaliar estado da página
+            const pageState = await page.evaluate(() => {
+              return {
+                readyState: document.readyState,
+                hasChat: !!document.querySelector('[data-testid="chat-list"]'),
+                hasQr: !!document.querySelector('[data-testid="qrcode"]'),
+                bodyText: document.body?.innerText?.substring(0, 100) || '',
+              };
+            }).catch(() => null);
+            
+            if (pageState) {
+              this.logger.log(`[${workspaceId}] 🔍 PageState: ${JSON.stringify(pageState)}`);
+            }
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }, 15000); // A cada 15 segundos
+      
+      // Limpar após 2 minutos
+      setTimeout(() => clearInterval(checkInterval), 120000);
     });
 
     // Pronto para usar
