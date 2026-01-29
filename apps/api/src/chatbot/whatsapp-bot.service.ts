@@ -113,14 +113,21 @@ export class WhatsAppBotService implements OnModuleInit {
   constructor(
     private readonly sessionManager: WhatsAppSessionManager,
     private readonly prisma: PrismaService,
-  ) {}
+  ) {
+    this.logger.log('🤖 WhatsAppBotService instanciado');
+  }
 
   /**
    * Registra o handler de mensagens no startup
    */
   onModuleInit() {
-    this.sessionManager.setMessageCallback(this.handleIncomingMessage.bind(this));
-    this.logger.log('Bot handler registrado no SessionManager');
+    try {
+      this.logger.log('🔧 onModuleInit chamado - registrando callback...');
+      this.sessionManager.setMessageCallback(this.handleIncomingMessage.bind(this));
+      this.logger.log('✅ Bot handler registrado no SessionManager com sucesso');
+    } catch (err) {
+      this.logger.error(`❌ Erro ao registrar callback: ${err}`);
+    }
   }
 
   /**
