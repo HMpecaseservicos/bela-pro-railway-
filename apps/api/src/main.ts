@@ -3,21 +3,29 @@ import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 
 async function bootstrap() {
+  console.log('[STARTUP] Iniciando bootstrap...');
+  console.log('[STARTUP] NODE_ENV:', process.env.NODE_ENV);
+  console.log('[STARTUP] PORT:', process.env.PORT);
+  console.log('[STARTUP] DATABASE_URL exists:', !!process.env.DATABASE_URL);
+  
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  
+  try {
+    const app = await NestFactory.create(AppModule);
+    console.log('[STARTUP] NestFactory criado com sucesso');
 
-  // Configuração CORS robusta
-  const corsOriginsRaw = process.env.CORS_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
-  const allowedOrigins = corsOriginsRaw
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
+    // Configuração CORS robusta
+    const corsOriginsRaw = process.env.CORS_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
+    const allowedOrigins = corsOriginsRaw
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
 
-  logger.log(`CORS configurado. Origins explícitas: ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : '(nenhuma - aceita .railway.app e localhost)'}`);
+    logger.log(`CORS configurado. Origins explícitas: ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : '(nenhuma - aceita .railway.app e localhost)'}`);
 
-  app.enableCors({
-    origin: (origin, callback) => {
-      // Requisições sem origin (server-to-server, Postman, etc.)
+    app.enableCors({
+      origin: (origin, callback) => {
+        // Requisições sem origin (server-to-server, Postman, etc.)
       if (!origin) {
         return callback(null, true);
       }
@@ -52,5 +60,9 @@ async function bootstrap() {
   await app.listen(Number.isFinite(port) ? port : 3000);
   
   logger.log(`🚀 API rodando na porta ${port}`);
+  } catch (error) {
+    console.error('[STARTUP] Erro fatal ao iniciar:', error);
+    process.exit(1);
+  }
 }
 bootstrap();
