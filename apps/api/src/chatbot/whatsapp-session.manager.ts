@@ -146,6 +146,10 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
   // Callback global para mensagens (set pelo BotService)
   private messageCallback: MessageCallback | null = null;
   
+  // Set para evitar processar mesma mensagem duas vezes
+  // (quando ambos eventos 'message' e 'message_create' disparam)
+  private processedMessages = new Set<string>();
+  
   // Pasta base para armazenar sessões WhatsApp
   // WHATSAPP_SESSIONS_DIR: diretório configurável via env
   // Fallback: pasta local para Railway/dev (.whatsapp-sessions)
@@ -429,15 +433,30 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
       sessionData.qrCode = null;
     });
 
-    // Mensagem recebida
-    client.on('message', async (msg: Message) => {
+    // Handler compartilhado para mensagens
+    const handleMessage = async (msg: Message, eventName: string) => {
+      const messageId = msg.id._serialized;
+      
+      // Evitar processar mesma mensagem duas vezes
+      if (this.processedMessages.has(messageId)) {
+        this.logger.debug(`[${workspaceId}] Mensagem ${messageId} já processada, ignorando duplicata`);
+        return;
+      }
+      this.processedMessages.add(messageId);
+      
+      // Limpar mensagens antigas do set (evitar memory leak)
+      if (this.processedMessages.size > 1000) {
+        const arr = Array.from(this.processedMessages);
+        arr.slice(0, 500).forEach(id => this.processedMessages.delete(id));
+      }
+      
       // LOG: Mensagem bruta recebida
       this.logger.log(
-        `[${workspaceId}] 📩 Mensagem recebida | ` +
+        `[${workspaceId}] 📩 ${eventName} | ` +
         `from: ${msg.from} | ` +
         `body: "${(msg.body || '').substring(0, 50)}" | ` +
         `fromMe: ${msg.fromMe} | ` +
-        `callback registrado: ${!!this.messageCallback}`
+        `callback: ${!!this.messageCallback}`
       );
       
       // Ignorar mensagens de grupo, próprias, de broadcast ou LID
@@ -489,6 +508,17 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
         }
       } else {
         this.logger.warn(`[${workspaceId}] ⚠️ messageCallback NÃO registrado - mensagem não será processada!`);
+      }
+    };
+
+    // Registra ambos os eventos para maior compatibilidade
+    // Em algumas versões do whatsapp-web.js, apenas 'message_create' dispara
+    client.on('message', (msg: Message) => handleMessage(msg, 'message'));
+    client.on('message_create', (msg: Message) => {
+      // message_create dispara para TODAS as mensagens (enviadas e recebidas)
+      // Só processa se NÃO for mensagem própria (evita duplicação com 'message')
+      if (!msg.fromMe) {
+        handleMessage(msg, 'message_create');
       }
     });
   }
