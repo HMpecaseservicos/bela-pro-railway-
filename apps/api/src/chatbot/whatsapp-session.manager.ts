@@ -398,40 +398,77 @@ export class WhatsAppSessionManager implements OnModuleDestroy {
       sessionData.state = WhatsAppSessionState.AUTHENTICATING;
       sessionData.qrCode = null;
       
-      // Diagnóstico: verificar estado após alguns segundos
-      const checkInterval = setInterval(async () => {
+      // Fallback: detectar ready manualmente se evento não vier
+      // (whatsapp-web.js pode ter seletores desatualizados)
+      const readyCheckInterval = setInterval(async () => {
+        // Se já está conectado (ready disparou), para
         if (sessionData.state === WhatsAppSessionState.CONNECTED) {
-          clearInterval(checkInterval);
+          clearInterval(readyCheckInterval);
           return;
         }
+        
         try {
           const page = (client as any).pupPage;
-          if (page) {
-            // Verificar URL e se há frames de erro
-            const url = page.url();
-            this.logger.log(`[${workspaceId}] 🔍 Diagnóstico: URL=${url.substring(0, 50)}, state=${sessionData.state}`);
+          if (!page) return;
+          
+          // Verificar se a interface principal do WhatsApp carregou
+          const isReady = await page.evaluate(() => {
+            // Múltiplos seletores para detectar interface pronta
+            const hasSearchBox = !!document.querySelector('[data-testid="chat-list-search"]') ||
+                                 !!document.querySelector('[title="Pesquisar"]') ||
+                                 !!document.querySelector('[title="Search"]') ||
+                                 !!document.querySelector('div[contenteditable="true"][data-tab]');
+            const hasMainPane = !!document.querySelector('#pane-side') ||
+                               !!document.querySelector('[data-testid="conversation-panel-wrapper"]');
+            const bodyText = document.body?.innerText || '';
+            const hasConversationUI = bodyText.includes('Pesquisar ou iniciar') || 
+                                      bodyText.includes('Search or start') ||
+                                      bodyText.includes('Todas') ||
+                                      bodyText.includes('Não lidas');
+            return hasSearchBox || hasMainPane || hasConversationUI;
+          }).catch(() => false);
+          
+          if (isReady) {
+            this.logger.log(`[${workspaceId}] 🔧 Ready detectado manualmente (fallback) - disparando ready...`);
+            clearInterval(readyCheckInterval);
             
-            // Tentar avaliar estado da página
-            const pageState = await page.evaluate(() => {
-              return {
-                readyState: document.readyState,
-                hasChat: !!document.querySelector('[data-testid="chat-list"]'),
-                hasQr: !!document.querySelector('[data-testid="qrcode"]'),
-                bodyText: document.body?.innerText?.substring(0, 100) || '',
-              };
-            }).catch(() => null);
+            // Simular o evento ready
+            sessionData.state = WhatsAppSessionState.CONNECTED;
+            sessionData.connectedAt = new Date();
             
-            if (pageState) {
-              this.logger.log(`[${workspaceId}] 🔍 PageState: ${JSON.stringify(pageState)}`);
+            // Tentar obter número conectado
+            try {
+              const info = client.info;
+              if (info?.wid?.user) {
+                const phoneNumber = info.wid.user;
+                sessionData.connectedPhone = `+${phoneNumber}`;
+                
+                // Verificar conflito
+                const existingWorkspace = this.connectedPhones.get(phoneNumber);
+                if (existingWorkspace && existingWorkspace !== workspaceId) {
+                  this.logger.error(`[${workspaceId}] ⚠️ CONFLITO: Número ${phoneNumber} já conectado no workspace ${existingWorkspace}`);
+                  sessionData.state = WhatsAppSessionState.AUTH_FAILURE;
+                  sessionData.lastError = `Número já em uso pelo workspace ${existingWorkspace}`;
+                  await client.logout().catch(() => {});
+                  return;
+                }
+                
+                this.connectedPhones.set(phoneNumber, workspaceId);
+                this.logger.log(`[${workspaceId}] ✅ WhatsApp conectado (fallback) | telefone: +${phoneNumber}`);
+              } else {
+                this.logger.log(`[${workspaceId}] ✅ WhatsApp conectado (fallback)`);
+              }
+            } catch {
+              this.logger.log(`[${workspaceId}] ✅ WhatsApp conectado (fallback)`);
             }
           }
         } catch (e) {
           // Ignore
         }
-      }, 15000); // A cada 15 segundos
+      }, 3000); // Verificar a cada 3 segundos
       
       // Limpar após 2 minutos
-      setTimeout(() => clearInterval(checkInterval), 120000);
+      setTimeout(() => clearInterval(readyCheckInterval), 120000);
     });
 
     // Pronto para usar
