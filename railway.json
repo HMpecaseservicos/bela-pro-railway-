@@ -1,14 +1,9 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "nixpacksConfigPath": "nixpacks.toml",
-    "buildCommand": "npm run db:generate && npm run build -w @bela-pro/api"
+    "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npm run db:migrate:deploy && node apps/api/dist/main.js",
-    "healthcheckPath": "/api/v1/health",
-    "healthcheckTimeout": 60,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
